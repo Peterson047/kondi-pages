@@ -5,6 +5,7 @@ import {
   Moon,
   Sun
 } from 'lucide-react';
+import { Logo } from './ui/Logo';
 
 interface NavbarProps {
   onOpenScanner: () => void;
@@ -24,24 +25,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <header className="sticky top-0 z-40 w-full border-b border-zinc-200/80 dark:border-zinc-800/80 bg-white/80 dark:bg-[#0A0A0C]/80 backdrop-blur-md transition-colors">
       <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
-        {/* Brand / Logo */}
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-2xl bg-orange-500 flex items-center justify-center text-white shadow-md shadow-orange-500/30 font-black text-lg">
-            K
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-lg text-zinc-900 dark:text-white tracking-tight">
-                Kondi
-              </span>
-              <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/50 px-2 py-0.5 rounded-full border border-orange-200/60 dark:border-orange-800/60 uppercase">
-                Pages
-              </span>
-            </div>
-            <p className="text-[10px] text-zinc-400 font-mono -mt-1 hidden sm:block">
-              控计 • Nota Fiscal Paulista
-            </p>
-          </div>
+        {/* Official Brand Logo */}
+        <div className="flex items-center cursor-pointer">
+          <Logo height={34} />
         </div>
 
         {/* Action Controls */}

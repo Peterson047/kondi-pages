@@ -7,7 +7,7 @@ export const Footer: React.FC = () => {
       <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
         <div className="space-y-1">
           <div className="flex items-center justify-center md:justify-start gap-2">
-            <span className="font-bold text-zinc-900 dark:text-white">Kondi Pages</span>
+            <span className="font-bold text-zinc-900 dark:text-white">Kondi</span>
             <span>•</span>
             <span className="font-mono">控计 (Controle e Gestão)</span>
           </div>
