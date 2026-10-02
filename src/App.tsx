@@ -67,9 +67,13 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
+      document.body.classList.add('dark');
+      document.documentElement.style.colorScheme = 'dark';
       localStorage.setItem('kondi_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
+      document.body.classList.remove('dark');
+      document.documentElement.style.colorScheme = 'light';
       localStorage.setItem('kondi_theme', 'light');
     }
   }, [darkMode]);
