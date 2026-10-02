@@ -6,7 +6,7 @@ import path from 'path';
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: './', // Ensures assets load correctly on GitHub Pages under any subpath
+  base: process.env.NODE_ENV === 'production' ? '/kondi-pages/' : '/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
