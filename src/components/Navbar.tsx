@@ -3,14 +3,12 @@ import {
   Camera,
   History,
   Moon,
-  Sun,
-  Sparkles
+  Sun
 } from 'lucide-react';
 
 interface NavbarProps {
   onOpenScanner: () => void;
   onOpenHistory: () => void;
-  onLoadDemo: () => void;
   historyCount: number;
   darkMode: boolean;
   onToggleTheme: () => void;
@@ -19,16 +17,15 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({
   onOpenScanner,
   onOpenHistory,
-  onLoadDemo,
   historyCount,
   darkMode,
   onToggleTheme,
 }) => {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-zinc-200/80 dark:border-zinc-800/80 bg-white/80 dark:bg-[#0A0A0C]/80 backdrop-blur-md transition-colors">
-      <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+      <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
         {/* Brand / Logo */}
-        <div className="flex items-center gap-2.5 cursor-pointer" onClick={onLoadDemo}>
+        <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-2xl bg-orange-500 flex items-center justify-center text-white shadow-md shadow-orange-500/30 font-black text-lg">
             K
           </div>
@@ -49,30 +46,20 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
-          {/* Load Demo Button */}
-          <button
-            onClick={onLoadDemo}
-            title="Ver recibo de exemplo do Design System"
-            className="hidden md:flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-zinc-600 dark:text-zinc-300 hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/40 rounded-xl transition-colors border border-transparent hover:border-orange-200 dark:hover:border-orange-900"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-orange-500" />
-            Recibo Exemplo
-          </button>
-
           {/* History Button */}
-          <button
-            onClick={onOpenHistory}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs md:text-sm font-semibold text-zinc-700 dark:text-zinc-200 bg-zinc-100 dark:bg-zinc-800/80 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-2xl transition-colors relative"
-            title="Abrir histórico local"
-          >
-            <History className="w-4 h-4 text-zinc-500" />
-            <span className="hidden sm:inline">Histórico</span>
-            {historyCount > 0 && (
+          {historyCount > 0 && (
+            <button
+              onClick={onOpenHistory}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs md:text-sm font-semibold text-zinc-700 dark:text-zinc-200 bg-zinc-100 dark:bg-zinc-800/80 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-2xl transition-colors relative"
+              title="Abrir histórico local"
+            >
+              <History className="w-4 h-4 text-zinc-500" />
+              <span className="hidden sm:inline">Histórico</span>
               <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-orange-500 text-white font-mono">
                 {historyCount}
               </span>
-            )}
-          </button>
+            </button>
+          )}
 
           {/* Theme Toggle Button */}
           <button
