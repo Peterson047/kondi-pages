@@ -135,36 +135,77 @@ export const App: React.FC = () => {
 
     const startCamera = async () => {
       setCameraError(null);
+      await stopDirectScanner();
+
       try {
-        const devices = await Html5Qrcode.getCameras();
-        if (!isMounted) return;
-
-        if (!devices || devices.length === 0) {
-          setCameraError('Nenhuma câmera encontrada no dispositivo.');
-          return;
-        }
-
-        setCameras(devices);
-        const backCam = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('traseira'));
-        const camId = selectedCameraId || (backCam ? backCam.id : devices[0].id);
-        setSelectedCameraId(camId);
-
         const qrScanner = new Html5Qrcode('home-camera-viewport');
         directScannerRef.current = qrScanner;
 
-        await qrScanner.start(
-          camId,
-          {
-            fps: 10,
-            qrbox: { width: 250, height: 250 },
-            aspectRatio: 1.0,
+        const config = {
+          fps: 10,
+          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+            const min = Math.min(viewfinderWidth, viewfinderHeight);
+            const edge = Math.max(180, Math.min(260, Math.floor(min * 0.75)));
+            return { width: edge, height: edge };
           },
-          (decodedText) => {
-            if (!isDirectScanningRef.current) return;
-            handleProcessScannedUrl(decodedText);
-          },
-          () => {}
-        );
+        };
+
+        const onScanSuccess = (decodedText: string) => {
+          if (!isDirectScanningRef.current) return;
+          handleProcessScannedUrl(decodedText);
+        };
+
+        // Populate camera list in background without blocking
+        Html5Qrcode.getCameras()
+          .then((devices) => {
+            if (isMounted && devices && devices.length > 0) {
+              setCameras(devices);
+            }
+          })
+          .catch(() => {});
+
+        let started = false;
+
+        // 1. Try user-selected camera ID if specified
+        if (selectedCameraId) {
+          try {
+            await qrScanner.start(selectedCameraId, config, onScanSuccess, () => {});
+            started = true;
+          } catch (e) {
+            console.warn('Falha com selectedCameraId, tentando facingMode...', e);
+          }
+        }
+
+        // 2. Try back camera (environment)
+        if (!started) {
+          try {
+            await qrScanner.start({ facingMode: 'environment' }, config, onScanSuccess, () => {});
+            started = true;
+          } catch (e) {
+            console.warn('Falha com environment, tentando front camera...', e);
+          }
+        }
+
+        // 3. Try front camera / laptop webcam (user)
+        if (!started) {
+          try {
+            await qrScanner.start({ facingMode: 'user' }, config, onScanSuccess, () => {});
+            started = true;
+          } catch (e) {
+            console.warn('Falha com user, tentando primeira câmera disponível...', e);
+          }
+        }
+
+        // 4. Fallback to any camera device returned by getCameras
+        if (!started) {
+          const devices = await Html5Qrcode.getCameras();
+          if (devices && devices.length > 0) {
+            await qrScanner.start(devices[0].id, config, onScanSuccess, () => {});
+            started = true;
+          } else {
+            throw new Error('Nenhuma câmera disponível no dispositivo.');
+          }
+        }
 
         isDirectScanningRef.current = true;
       } catch (err: unknown) {
