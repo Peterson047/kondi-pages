@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import confetti from 'canvas-confetti';
 import {
   Camera,
@@ -9,7 +9,8 @@ import {
   Loader2,
   AlertCircle,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  Zap
 } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
@@ -50,6 +51,8 @@ export const App: React.FC = () => {
   const [proxyError, setProxyError] = useState<string | null>(null);
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
 
   // Modals
   const [isScannerModalOpen, setIsScannerModalOpen] = useState(false);
@@ -82,7 +85,6 @@ export const App: React.FC = () => {
   useEffect(() => {
     const list = getStoredReceipts();
     setStoredReceipts(list);
-    // If user has previous real receipts, show the latest one
     if (list.length > 0) {
       setCurrentReceipt(list[0]);
     }
@@ -92,7 +94,23 @@ export const App: React.FC = () => {
     setToast({ message, type });
   };
 
+  const toggleTorch = async () => {
+    if (!directScannerRef.current || !isDirectScanningRef.current) return;
+    try {
+      const nextState = !torchOn;
+      // apply torch constraint
+      await (directScannerRef.current as unknown as { applyVideoConstraints: (c: unknown) => Promise<void> }).applyVideoConstraints({
+        advanced: [{ torch: nextState }]
+      });
+      setTorchOn(nextState);
+    } catch (e) {
+      console.warn('Lanterna não suportada ou erro ao alternar:', e);
+    }
+  };
+
   const stopDirectScanner = async () => {
+    setTorchOn(false);
+    setTorchSupported(false);
     if (directScannerRef.current && isDirectScanningRef.current) {
       try {
         await directScannerRef.current.stop();
@@ -111,7 +129,7 @@ export const App: React.FC = () => {
     setProxyError(null);
 
     try {
-      showToast('QR Code detectado! Obtendo dados da SEFAZ...', 'info');
+      showToast('QR Code lido! Processando nota fiscal...', 'info');
 
       const result = await fetchAndParseNfce(scannedText);
       handleReceiptReceived(result.data);
@@ -138,14 +156,21 @@ export const App: React.FC = () => {
       await stopDirectScanner();
 
       try {
-        const qrScanner = new Html5Qrcode('home-camera-viewport');
+        // High performance QR code scanning configuration
+        const qrScanner = new Html5Qrcode('home-camera-viewport', {
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true,
+          },
+          verbose: false,
+        });
         directScannerRef.current = qrScanner;
 
         const config = {
-          fps: 10,
+          fps: 25, // higher scan rate per second
           qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
             const min = Math.min(viewfinderWidth, viewfinderHeight);
-            const edge = Math.max(180, Math.min(260, Math.floor(min * 0.75)));
+            const edge = Math.max(220, Math.min(320, Math.floor(min * 0.85)));
             return { width: edge, height: edge };
           },
         };
@@ -169,24 +194,48 @@ export const App: React.FC = () => {
         // 1. Try user-selected camera ID if specified
         if (selectedCameraId) {
           try {
-            await qrScanner.start(selectedCameraId, config, onScanSuccess, () => {});
+            await qrScanner.start(
+              selectedCameraId,
+              config,
+              onScanSuccess,
+              () => {}
+            );
             started = true;
           } catch (e) {
-            console.warn('Falha com selectedCameraId, tentando facingMode...', e);
+            console.warn('Falha com selectedCameraId, tentando facingMode HD...', e);
           }
         }
 
-        // 2. Try back camera (environment)
+        // 2. Try back camera (environment) with HD resolution for fine dots
+        if (!started) {
+          try {
+            await qrScanner.start(
+              {
+                facingMode: 'environment',
+                width: { min: 640, ideal: 1280, max: 1920 },
+                height: { min: 480, ideal: 720, max: 1080 },
+              },
+              config,
+              onScanSuccess,
+              () => {}
+            );
+            started = true;
+          } catch (e) {
+            console.warn('Falha com environment HD, tentando facingMode básico...', e);
+          }
+        }
+
+        // 3. Try back camera basic
         if (!started) {
           try {
             await qrScanner.start({ facingMode: 'environment' }, config, onScanSuccess, () => {});
             started = true;
           } catch (e) {
-            console.warn('Falha com environment, tentando front camera...', e);
+            console.warn('Falha com environment básico, tentando webcam/user...', e);
           }
         }
 
-        // 3. Try front camera / laptop webcam (user)
+        // 4. Try front camera / laptop webcam (user)
         if (!started) {
           try {
             await qrScanner.start({ facingMode: 'user' }, config, onScanSuccess, () => {});
@@ -196,7 +245,7 @@ export const App: React.FC = () => {
           }
         }
 
-        // 4. Fallback to any camera device returned by getCameras
+        // 5. Fallback to any camera device returned by getCameras
         if (!started) {
           const devices = await Html5Qrcode.getCameras();
           if (devices && devices.length > 0) {
@@ -208,6 +257,16 @@ export const App: React.FC = () => {
         }
 
         isDirectScanningRef.current = true;
+
+        // Check if torch/flashlight is supported
+        try {
+          const capabilities = (qrScanner as unknown as { getRunningTrackCapabilities?: () => { torch?: boolean } }).getRunningTrackCapabilities?.();
+          if (capabilities && 'torch' in capabilities) {
+            setTorchSupported(true);
+          }
+        } catch {
+          // ignore
+        }
       } catch (err: unknown) {
         if (!isMounted) return;
         const msg = err instanceof Error ? err.message : String(err);
@@ -361,17 +420,51 @@ export const App: React.FC = () => {
               {/* Tab 1: Live Camera Viewport */}
               {scanTab === 'camera' && (
                 <div className="p-6 flex flex-col items-center justify-center">
-                  <div className="relative w-full aspect-square max-w-[320px] rounded-3xl overflow-hidden bg-black border-2 border-orange-500/40 flex items-center justify-center shadow-inner">
-                    <div id="home-camera-viewport" className="w-full h-full" />
+                  <div className="relative w-full aspect-square max-w-[340px] rounded-3xl overflow-hidden bg-black border-2 border-orange-500/40 flex items-center justify-center shadow-2xl">
+                    <div id="home-camera-viewport" className="w-full h-full object-cover" />
+
+                    {/* Retículo de Mira & Laser Ativo */}
+                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                      <div className="relative w-[82%] h-[82%]">
+                        {/* 4 cantos alaranjados */}
+                        <div className="absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 border-orange-500 rounded-tl-xl shadow-xs" />
+                        <div className="absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 border-orange-500 rounded-tr-xl shadow-xs" />
+                        <div className="absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 border-orange-500 rounded-bl-xl shadow-xs" />
+                        <div className="absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 border-orange-500 rounded-br-xl shadow-xs" />
+
+                        {/* Linha de laser escaneando */}
+                        <div className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-orange-500 to-transparent shadow-[0_0_8px_#F97316] animate-scan-laser" />
+                      </div>
+                    </div>
+
+                    {/* Botão de Lanterna / Torch (se suportado pelo hardware) */}
+                    {torchSupported && (
+                      <button
+                        type="button"
+                        onClick={toggleTorch}
+                        className={`absolute bottom-3 right-3 p-2.5 rounded-full backdrop-blur-md transition-all z-30 ${
+                          torchOn
+                            ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/50 scale-105'
+                            : 'bg-black/60 text-zinc-300 hover:text-white hover:bg-black/80'
+                        }`}
+                        title={torchOn ? 'Desligar lanterna' : 'Ligar lanterna'}
+                      >
+                        <Zap className="w-4 h-4" />
+                      </button>
+                    )}
 
                     {loading && (
-                      <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-white gap-2 p-4 text-center z-20">
+                      <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center text-white gap-2 p-4 text-center z-30 backdrop-blur-xs">
                         <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
-                        <span className="text-sm font-bold">Extraindo dados fiscais...</span>
+                        <span className="text-sm font-bold">Lendo QR Code...</span>
                         <span className="text-xs text-zinc-400">Consultando a SEFAZ</span>
                       </div>
                     )}
                   </div>
+
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 text-center mt-3">
+                    💡 Centralize o QR Code no quadrado. Afaste 15 a 20 cm para foco nítido.
+                  </p>
 
                   {cameras.length > 1 && (
                     <div className="mt-3 flex items-center gap-2 text-xs">

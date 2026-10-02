@@ -51,6 +51,17 @@
   background-repeat: repeat-x;
 }
 
+/* Animação do Laser de Escaneamento */
+@keyframes scan-laser {
+  0% { top: 8%; opacity: 0.85; }
+  50% { top: 88%; opacity: 1; }
+  100% { top: 8%; opacity: 0.85; }
+}
+
+.animate-scan-laser {
+  animation: scan-laser 2s ease-in-out infinite;
+}
+
 /* Barra de Rolagem sutil */
 ::-webkit-scrollbar {
   width: 6px;

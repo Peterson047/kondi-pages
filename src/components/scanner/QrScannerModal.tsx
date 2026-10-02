@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import {
   Camera,
   Upload,
@@ -101,14 +101,20 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       await stopScanner();
 
       try {
-        const html5QrCode = new Html5Qrcode('qr-reader-viewport');
+        const html5QrCode = new Html5Qrcode('qr-reader-viewport', {
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true,
+          },
+          verbose: false,
+        });
         scannerRef.current = html5QrCode;
 
         const config = {
-          fps: 10,
+          fps: 25,
           qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
             const min = Math.min(viewfinderWidth, viewfinderHeight);
-            const edge = Math.max(180, Math.min(260, Math.floor(min * 0.75)));
+            const edge = Math.max(220, Math.min(320, Math.floor(min * 0.85)));
             return { width: edge, height: edge };
           },
         };
@@ -139,13 +145,32 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
           }
         }
 
-        // 2. Try back camera (environment)
+        // 2. Try back camera (environment) with HD constraints
+        if (!started) {
+          try {
+            await html5QrCode.start(
+              {
+                facingMode: 'environment',
+                width: { min: 640, ideal: 1280, max: 1920 },
+                height: { min: 480, ideal: 720, max: 1080 },
+              },
+              config,
+              onScanSuccess,
+              () => {}
+            );
+            started = true;
+          } catch (e) {
+            console.warn('Falha com environment HD, tentando básico...', e);
+          }
+        }
+
+        // 3. Try back camera basic
         if (!started) {
           try {
             await html5QrCode.start({ facingMode: 'environment' }, config, onScanSuccess, () => {});
             started = true;
           } catch (e) {
-            console.warn('Falha com environment, tentando front camera...', e);
+            console.warn('Falha com environment básico, tentando front camera...', e);
           }
         }
 

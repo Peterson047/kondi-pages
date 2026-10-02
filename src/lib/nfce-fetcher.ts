@@ -1,4 +1,4 @@
-import { parseNfceHtml } from './nfce-parser';
+import { parseNfceHtml, parseNfceFromQr } from './nfce-parser';
 import { NfceData } from './types';
 
 // List of public CORS proxies with failover
@@ -41,40 +41,40 @@ export interface FetchResult {
   rawHtml?: string;
 }
 
-// Fetch NFC-e HTML trying multiple CORS proxies
+// Fetch NFC-e HTML trying multiple CORS proxies with QR metadata fallback
 export async function fetchAndParseNfce(targetUrl: string): Promise<FetchResult> {
-  // Validate that url looks like a real NFC-e or HTTP link
-  if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-    throw new Error('A URL precisa começar com http:// ou https://');
-  }
+  const cleanUrl = targetUrl.trim();
+  const qrFallback = parseNfceFromQr(cleanUrl);
 
-  let lastError: Error | null = null;
-
-  for (const buildProxyUrl of CORS_PROXIES) {
-    try {
-      const proxyUrl = buildProxyUrl(targetUrl);
-      const html = await fetchWithTimeout(proxyUrl, 7000);
-      
-      // Parse HTML
-      const data = parseNfceHtml(html, targetUrl);
-      
-      // If we got at least some data (store name or total or items)
-      if (data.items.length > 0 || data.total > 0 || data.store !== 'Estabelecimento Comercial') {
-        return {
-          data,
-          source: 'proxy',
-          rawHtml: html,
-        };
+  // If targetUrl is an HTTP URL, attempt proxies
+  if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
+    for (const buildProxyUrl of CORS_PROXIES) {
+      try {
+        const proxyUrl = buildProxyUrl(cleanUrl);
+        const html = await fetchWithTimeout(proxyUrl, 5000);
+        
+        const data = parseNfceHtml(html, cleanUrl);
+        
+        if (data.items.length > 0 || data.total > 0 || data.store !== 'Estabelecimento Comercial') {
+          return {
+            data,
+            source: 'proxy',
+            rawHtml: html,
+          };
+        }
+      } catch {
+        // try next proxy
       }
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      // continue to next proxy
     }
   }
 
-  // If all proxies failed, throw with detailed suggestion
-  throw new Error(
-    lastError?.message ||
-    'Não foi possível obter o conteúdo da SEFAZ pelos proxies públicos. Utilize a importação colando o código HTML da página.'
-  );
+  // If proxies failed or blocked, but we extracted QR metadata (key, CNPJ, date):
+  if (qrFallback) {
+    return {
+      data: qrFallback,
+      source: 'qr-params',
+    };
+  }
+
+  throw new Error('Não foi possível obter os dados da SEFAZ pelos proxies públicos. Utilize a importação por HTML.');
 }

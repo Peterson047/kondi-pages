@@ -44,6 +44,54 @@ export function extractAccessKey(raw: string): string {
   return '';
 }
 
+// Extract metadata directly from the 44-digit key or QR code payload
+export function parseNfceFromQr(rawText: string): NfceData | null {
+  const key = extractAccessKey(rawText);
+  if (!key || key.length !== 44) return null;
+
+  // Key structure: cUF (2), AAMM (4), CNPJ (14), mod (2), serie (3), nNF (9), cNF (9), cDV (1)
+  const ufCode = key.slice(0, 2);
+  const year = key.slice(2, 4);
+  const month = key.slice(4, 6);
+  const rawCnpj = key.slice(6, 20);
+  const cnpj = rawCnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  const nNf = parseInt(key.slice(25, 34), 10);
+  const ufName = ufCode === '35' ? 'São Paulo - SP' : `UF ${ufCode}`;
+
+  let total = 0;
+  // Try extracting total from p parameter: p=CHAVE|2|1|1|TOTAL|...
+  try {
+    const url = new URL(rawText);
+    const p = url.searchParams.get('p') || '';
+    if (p) {
+      const parts = p.split('|');
+      for (const part of parts) {
+        if (/^\d+(\.\d{2})?$/.test(part) && parseFloat(part) > 0) {
+          total = parseFloat(part);
+          break;
+        }
+      }
+    }
+  } catch {
+    // raw text
+  }
+
+  return {
+    id: key,
+    key,
+    store: `Estabelecimento (CNPJ: ${cnpj})`,
+    cnpj,
+    address: `${ufName} • NFC-e nº ${nNf}`,
+    date: `${month}/20${year}`,
+    total,
+    discount: 0,
+    amount_paid: total,
+    items: [],
+    url: rawText,
+    scannedAt: new Date().toISOString(),
+  };
+}
+
 // 100% Client-side HTML Parser for SEFAZ-SP NFC-e
 export function parseNfceHtml(html: string, originalUrl?: string): NfceData {
   const parser = new DOMParser();
