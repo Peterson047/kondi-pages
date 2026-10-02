@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Efeito de Serrilhado / Picote de Recibo Fiscal */
+.receipt-perforated-top {
+  background-image: radial-gradient(circle at 10px -5px, transparent 8px, white 8.5px);
+  background-size: 20px 20px;
+}
+
+.dark .receipt-perforated-top {
+  background-image: radial-gradient(circle at 10px -5px, transparent 8px, #141416 8.5px);
+  background-size: 20px 20px;
+}
+
+.receipt-perforated-bottom {
+  background-image: radial-gradient(circle at 10px 25px, transparent 8px, white 8.5px);
+  background-size: 20px 20px;
+}
+
+.dark .receipt-perforated-bottom {
+  background-image: radial-gradient(circle at 10px 25px, transparent 8px, #141416 8.5px);
+  background-size: 20px 20px;
+}
+
+/* Divisor Picotado / Serrilhado */
+.receipt-dashed-line {
+  background-image: linear-gradient(to right, #e2e8f0 50%, transparent 50%);
+  background-size: 12px 1.5px;
+  background-repeat: repeat-x;
+}
+
+.dark .receipt-dashed-line {
+  background-image: linear-gradient(to right, #27272a 50%, transparent 50%);
+  background-size: 12px 1.5px;
+  background-repeat: repeat-x;
+}
+
+/* Barra de Rolagem sutil */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.7);
+}

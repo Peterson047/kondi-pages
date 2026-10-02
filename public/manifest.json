@@ -1,0 +1,25 @@
+{
+  "name": "Kondi",
+  "short_name": "Kondi",
+  "description": "Seu contrato com o controle de gastos. Escaneie notas fiscais e gerencie seu dinheiro com inteligência.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8F7FB",
+  "theme_color": "#F97316",
+  "orientation": "any",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
