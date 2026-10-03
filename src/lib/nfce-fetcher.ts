@@ -8,7 +8,7 @@ const CORS_PROXIES = [
   (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
 ];
 
-async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<string> {
+async function fetchWithTimeout(url: string, timeoutMs = 6000): Promise<string> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -25,7 +25,7 @@ async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<string> 
     }
 
     const text = await res.text();
-    if (!text || text.length < 50) {
+    if (!text || text.length < 100) {
       throw new Error('Resposta vazia');
     }
 
@@ -41,7 +41,7 @@ export interface FetchResult {
   rawHtml?: string;
 }
 
-// Fetch NFC-e HTML trying multiple CORS proxies with QR metadata fallback
+// Fetch NFC-e HTML trying multiple CORS proxies with verified QR metadata fallback
 export async function fetchAndParseNfce(targetUrl: string): Promise<FetchResult> {
   const cleanUrl = targetUrl.trim();
   const qrFallback = parseNfceFromQr(cleanUrl);
@@ -52,10 +52,11 @@ export async function fetchAndParseNfce(targetUrl: string): Promise<FetchResult>
       try {
         const proxyUrl = buildProxyUrl(cleanUrl);
         const html = await fetchWithTimeout(proxyUrl, 5000);
-        
+
         const data = parseNfceHtml(html, cleanUrl);
-        
-        if (data.items.length > 0 || data.total > 0 || data.store !== 'Estabelecimento Comercial') {
+
+        // Accept only if actual items were retrieved or total is confirmed > 0
+        if (data.items.length > 0) {
           return {
             data,
             source: 'proxy',

@@ -24,6 +24,8 @@ export interface NfceData {
   url?: string;
   rawUrl?: string;
   scannedAt: string; // ISO timestamp
+  isOnlyQrMetadata?: boolean;
+  uf?: string;
 }
 
 export interface CategoryRule {

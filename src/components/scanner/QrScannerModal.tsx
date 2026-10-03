@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { fetchAndParseNfce } from '../../lib/nfce-fetcher';
 import { NfceData } from '../../lib/types';
+import { playScanSuccessFeedback } from '../../lib/feedback';
 import confetti from 'canvas-confetti';
 
 interface QrScannerModalProps {
@@ -63,6 +64,9 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     setProxyError(null);
 
     try {
+      // Audio beep & haptic vibration
+      playScanSuccessFeedback();
+
       // Trigger confetti on successful detection
       confetti({
         particleCount: 50,
@@ -100,6 +104,28 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       setCameraError(null);
       await stopScanner();
 
+      // Check secure context
+      const isLocalhost = typeof window !== 'undefined' && (
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname === '::1'
+      );
+      const isSecure = typeof window !== 'undefined' && (
+        window.isSecureContext ||
+        window.location.protocol === 'https:' ||
+        isLocalhost
+      );
+
+      if (!isSecure) {
+        setCameraError('INSECURE_CONTEXT');
+        return;
+      }
+
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        setCameraError('MEDIA_DEVICES_UNSUPPORTED');
+        return;
+      }
+
       try {
         const html5QrCode = new Html5Qrcode('qr-reader-viewport', {
           formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
@@ -111,10 +137,10 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         scannerRef.current = html5QrCode;
 
         const config = {
-          fps: 25,
+          fps: 12, // 12 FPS gives camera hardware autofocus time & reduces CPU load
           qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
             const min = Math.min(viewfinderWidth, viewfinderHeight);
-            const edge = Math.max(220, Math.min(320, Math.floor(min * 0.85)));
+            const edge = Math.max(240, Math.floor(min * 0.88));
             return { width: edge, height: edge };
           },
         };
@@ -124,16 +150,22 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
           handleScannedResult(decodedText);
         };
 
-        // Populate camera list in background without blocking
-        Html5Qrcode.getCameras()
-          .then((devices) => {
-            if (isMounted && devices && devices.length > 0) {
+        // Query available cameras
+        let deviceList = cameras;
+        try {
+          const devices = await Html5Qrcode.getCameras();
+          if (devices && devices.length > 0) {
+            deviceList = devices;
+            if (isMounted) {
               setCameras(devices);
             }
-          })
-          .catch(() => {});
+          }
+        } catch (e) {
+          console.warn('Não foi possível pré-listar câmeras no modal:', e);
+        }
 
         let started = false;
+        let lastError: unknown = null;
 
         // 1. Try user-selected camera ID if specified
         if (selectedCameraId) {
@@ -141,69 +173,64 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
             await html5QrCode.start(selectedCameraId, config, onScanSuccess, () => {});
             started = true;
           } catch (e) {
-            console.warn('Falha com selectedCameraId, tentando facingMode...', e);
+            lastError = e;
+            console.warn('Falha com selectedCameraId:', e);
           }
         }
 
-        // 2. Try back camera (environment) with HD constraints
-        if (!started) {
+        // 2. If camera device list is available, pick rear camera first (mobile) or first camera (webcam/desktop)
+        if (!started && deviceList.length > 0) {
+          const rearCam = deviceList.find((d) => /back|traseira|rear|environment/i.test(d.label));
+          const chosenCam = rearCam || deviceList[0];
           try {
-            await html5QrCode.start(
-              {
-                facingMode: 'environment',
-                width: { min: 640, ideal: 1280, max: 1920 },
-                height: { min: 480, ideal: 720, max: 1080 },
-              },
-              config,
-              onScanSuccess,
-              () => {}
-            );
+            await html5QrCode.start(chosenCam.id, config, onScanSuccess, () => {});
             started = true;
+            if (isMounted && !selectedCameraId) {
+              setSelectedCameraId(chosenCam.id);
+            }
           } catch (e) {
-            console.warn('Falha com environment HD, tentando básico...', e);
+            lastError = e;
+            console.warn('Falha com deviceId da lista:', e);
           }
         }
 
-        // 3. Try back camera basic
+        // 3. Fallback: try environment facingMode (mobile rear)
         if (!started) {
           try {
             await html5QrCode.start({ facingMode: 'environment' }, config, onScanSuccess, () => {});
             started = true;
           } catch (e) {
+            lastError = e;
             console.warn('Falha com environment básico, tentando front camera...', e);
           }
         }
 
-        // 3. Try front camera / laptop webcam (user)
+        // 4. Fallback: try user facingMode (desktop webcam / front camera)
         if (!started) {
           try {
             await html5QrCode.start({ facingMode: 'user' }, config, onScanSuccess, () => {});
             started = true;
           } catch (e) {
-            console.warn('Falha com user, tentando primeira câmera disponível...', e);
+            lastError = e;
+            console.warn('Falha com user...', e);
           }
         }
 
-        // 4. Fallback to any camera device returned by getCameras
         if (!started) {
-          const devices = await Html5Qrcode.getCameras();
-          if (devices && devices.length > 0) {
-            await html5QrCode.start(devices[0].id, config, onScanSuccess, () => {});
-            started = true;
-          } else {
-            throw new Error('Nenhuma câmera detectada no dispositivo.');
-          }
+          throw lastError || new Error('Nenhuma câmera detectada no dispositivo.');
         }
 
         isScanningRef.current = true;
       } catch (err: unknown) {
         if (!isMounted) return;
         const msg = err instanceof Error ? err.message : String(err);
-        setCameraError(
-          msg.includes('NotAllowedError') || msg.includes('Permission')
-            ? 'Permissão da câmera negada. Permita o acesso nas configurações do navegador.'
-            : `Erro ao iniciar câmera: ${msg}`
-        );
+        if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
+          setCameraError('PERMISSION_DENIED');
+        } else if (msg.includes('insecure') || msg.includes('getUserMedia') || msg.includes('secure context')) {
+          setCameraError('INSECURE_CONTEXT');
+        } else {
+          setCameraError(msg);
+        }
       }
     };
 
@@ -223,14 +250,21 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     setLoading(true);
     setProxyError(null);
 
+    const html5QrCode = new Html5Qrcode('qr-file-processor');
     try {
-      const html5QrCode = new Html5Qrcode('qr-file-processor');
-      const decodedText = await html5QrCode.scanFile(file, true);
+      let decodedText = '';
+      try {
+        decodedText = await html5QrCode.scanFile(file, true);
+      } catch {
+        // Fallback: scan without cropping
+        decodedText = await html5QrCode.scanFile(file, false);
+      }
       await html5QrCode.clear();
       await handleScannedResult(decodedText);
     } catch (err) {
       console.error(err);
-      onShowToast('Não foi possível identificar um QR code válido nesta imagem.', 'error');
+      try { html5QrCode.clear(); } catch { /* ignore */ }
+      onShowToast('Não foi possível identificar um QR code válido nesta imagem. Aproxime a foto ou garanta boa iluminação.', 'error');
     } finally {
       setLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -346,14 +380,54 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
               )}
 
               {cameraError && (
-                <div className="mt-4 p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2.5">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-semibold block">{cameraError}</span>
-                    <span className="opacity-90">
-                      Você também pode usar a aba <strong>Enviar Foto</strong> ou <strong>Digitar Link</strong>.
-                    </span>
-                  </div>
+                <div className="mt-4 w-full">
+                  {cameraError === 'INSECURE_CONTEXT' ? (
+                    <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-200 space-y-2.5">
+                      <div className="flex items-start gap-2.5">
+                        <AlertCircle className="w-5 h-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-sm block">🔒 Câmera requer HTTPS no celular</span>
+                          <p className="opacity-90 leading-relaxed text-xs mt-1">
+                            Acessos por IP de rede local (ex: <code className="bg-amber-200/60 dark:bg-amber-900/60 px-1 py-0.5 rounded font-mono">http://192.168.x.x</code>) bloqueiam a câmera por segurança do navegador.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="bg-white/80 dark:bg-black/40 p-2.5 rounded-xl border border-amber-200/80 dark:border-amber-900/50 space-y-1 text-[11px]">
+                        <p>1. Inicie com HTTPS no computador: <code className="font-mono font-bold">npm run dev:https</code></p>
+                        <p>2. Abra a URL gerada com <code className="font-bold">https://</code> no celular.</p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('file')}
+                        className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 text-xs shadow-xs"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        Alternar para Enviar Foto
+                      </button>
+                    </div>
+                  ) : cameraError === 'PERMISSION_DENIED' ? (
+                    <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2.5">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold block text-sm">Permissão de câmera bloqueada</span>
+                        <span className="opacity-90 block mt-0.5">
+                          Permita o acesso à câmera nas configurações do navegador ao lado da barra de endereço.
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2.5">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold block">{cameraError}</span>
+                        <span className="opacity-90 block mt-0.5">
+                          Verifique se a câmera não está em uso por outro aplicativo ou use a aba <strong>Enviar Foto</strong>.
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

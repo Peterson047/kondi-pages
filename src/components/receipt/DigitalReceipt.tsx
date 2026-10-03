@@ -9,7 +9,10 @@ import {
   Store,
   Calendar,
   Tag,
-  ArrowDownToLine
+  ArrowDownToLine,
+  AlertCircle,
+  ExternalLink,
+  FileCode,
 } from 'lucide-react';
 import { NfceData } from '../../lib/types';
 import {
@@ -27,6 +30,7 @@ interface DigitalReceiptProps {
   isSaved?: boolean;
   onShowToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
   onNewScan: () => void;
+  onOpenManualHtml?: () => void;
 }
 
 export const DigitalReceipt: React.FC<DigitalReceiptProps> = ({
@@ -35,6 +39,7 @@ export const DigitalReceipt: React.FC<DigitalReceiptProps> = ({
   isSaved = false,
   onShowToast,
   onNewScan,
+  onOpenManualHtml,
 }) => {
   const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
   const [itemSearch, setItemSearch] = useState('');
@@ -255,8 +260,46 @@ export const DigitalReceipt: React.FC<DigitalReceiptProps> = ({
             ))}
 
             {filteredItems.length === 0 && (
-              <div className="py-8 text-center text-xs text-zinc-400">
-                Nenhum item encontrado com o termo "{itemSearch}".
+              <div className="py-6 text-center text-xs text-zinc-400 space-y-3">
+                {receipt.isOnlyQrMetadata ? (
+                  <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-200 space-y-3 text-left">
+                    <div className="flex items-start gap-2.5">
+                      <AlertCircle className="w-5 h-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                      <div>
+                        <span className="font-bold text-sm block">Chave e dados fiscais autenticados!</span>
+                        <p className="opacity-90 leading-relaxed mt-1 text-xs">
+                          Os dados oficiais desta nota foram lidos com sucesso. A SEFAZ exige consulta direta pelo navegador para detalhar os produtos individuais.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {receipt.url && (
+                        <a
+                          href={receipt.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 min-w-[140px] py-2.5 px-3 bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-bold rounded-xl border border-zinc-200 dark:border-zinc-700 transition-colors flex items-center justify-center gap-1.5 text-xs shadow-xs"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-orange-500" />
+                          Abrir Nota na SEFAZ
+                        </a>
+                      )}
+                      {onOpenManualHtml && (
+                        <button
+                          type="button"
+                          onClick={onOpenManualHtml}
+                          className="flex-1 min-w-[140px] py-2.5 px-3 bg-orange-600 hover:bg-orange-700 active:scale-98 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 text-xs shadow-xs cursor-pointer"
+                        >
+                          <FileCode className="w-3.5 h-3.5" />
+                          Colar Código da Página
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <p>Nenhum item encontrado com o termo "{itemSearch}".</p>
+                )}
               </div>
             )}
           </div>
@@ -266,10 +309,12 @@ export const DigitalReceipt: React.FC<DigitalReceiptProps> = ({
 
           {/* Financial Breakdown (Totais) */}
           <div className="space-y-2 font-mono text-sm">
-            <div className="flex justify-between text-zinc-500 dark:text-zinc-400 text-xs">
-              <span>SUBTOTAL</span>
-              <span>{formatBrl(receipt.total + receipt.discount)}</span>
-            </div>
+            {receipt.total > 0 && (
+              <div className="flex justify-between text-zinc-500 dark:text-zinc-400 text-xs">
+                <span>SUBTOTAL</span>
+                <span>{formatBrl(receipt.total + receipt.discount)}</span>
+              </div>
+            )}
 
             {receipt.discount > 0 && (
               <div className="flex justify-between text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
@@ -283,7 +328,11 @@ export const DigitalReceipt: React.FC<DigitalReceiptProps> = ({
                 Total Pago
               </span>
               <span className="font-mono text-2xl md:text-3xl font-black text-orange-600 dark:text-orange-500">
-                {formatBrl(receipt.amount_paid || receipt.total)}
+                {receipt.amount_paid > 0
+                  ? formatBrl(receipt.amount_paid)
+                  : receipt.total > 0
+                  ? formatBrl(receipt.total)
+                  : 'Ver na SEFAZ'}
               </span>
             </div>
           </div>
